@@ -10,13 +10,11 @@
     <div class="container">
         <header>
             <h1>药物记录管理</h1>
-            <div class="sync-status" id="syncStatus" style="display: none;"></div>
             <div class="header-actions">
                 <button id="addDrugBtn" class="btn btn-primary">添加药物</button>
                 <button id="importBtn" class="btn btn-secondary">导入</button>
+                <button id="undoImportBtn" class="btn btn-secondary" disabled>撤销导入</button>
                 <button id="exportBtn" class="btn btn-secondary">导出</button>
-                <button id="syncToggle" class="btn btn-sync">开启同步</button>
-                <button id="syncNow" class="btn btn-sync-now">立即同步</button>
             </div>
         </header>
 
@@ -50,15 +48,19 @@
                     <input type="text" id="drugName" required>
                 </div>
                 <div class="form-group">
-                    <label for="dosage">剂量 *</label>
+                    <label for="dosage">药物剂量 *</label>
                     <select id="dosageSelect" style="display: none; margin-bottom: 5px;">
                         <option value="">请选择剂量</option>
                     </select>
                     <input type="text" id="dosage" required placeholder="例如：100mg">
                 </div>
                 <div class="form-group">
-                    <label for="frequency">频率</label>
-                    <select id="frequency">
+                    <label for="usageAmount">药物用量 *</label>
+                    <input type="text" id="usageAmount" required placeholder="例如：2片 / 10ml">
+                </div>
+                <div class="form-group">
+                    <label for="frequency">使用频次 *</label>
+                    <select id="frequency" required>
                         <option value="">请选择频率</option>
                         <option value="qd">qd - 每日一次</option>
                         <option value="bid">bid - 每日2次</option>
@@ -87,14 +89,14 @@
                         <option value="pc">pc - 餐后</option>
                         <option value="hs">hs - 睡前</option>
                         <option value="st">st - 立即</option>
-                        <option value="prn">prn - 必要时（长期）</option>
+                        <option value="prn">prn - 必要时</option>
                         <option value="frequency_other">其它（自行填写）</option>
                     </select>
                     <input type="text" id="frequencyOther" placeholder="请输入频率" style="display: none; margin-top: 5px;">
                 </div>
                 <div class="form-group">
-                    <label for="administration">用法</label>
-                    <select id="administration">
+                    <label for="administration">药物用法 *</label>
+                    <select id="administration" required>
                         <option value="">请选择用法</option>
                         <option value="ID">ID - 皮内注射</option>
                         <option value="H">H - 皮下注射</option>
@@ -110,12 +112,12 @@
                     <input type="text" id="administrationOther" placeholder="请输入用法" style="display: none; margin-top: 5px;">
                 </div>
                 <div class="form-group">
-                    <label for="effect">药物作用</label>
-                    <textarea id="effect" rows="2" placeholder="药物的主要作用和适应症"></textarea>
+                    <label for="effect">药物作用 *</label>
+                    <textarea id="effect" rows="2" placeholder="药物的主要作用和适应症" required></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="contraindications">禁忌症</label>
-                    <textarea id="contraindications" rows="2" placeholder="禁忌症和注意事项"></textarea>
+                    <label for="contraindications">使用禁忌</label>
+                    <textarea id="contraindications" rows="2" placeholder="禁忌症"></textarea>
                 </div>
                 <div class="form-group">
                     <label for="notes">注意事项</label>

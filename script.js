@@ -3,9 +3,7 @@ class DrugManager {
         this.drugs = this.loadDrugs();
         this.editingId = null;
         this.drugDosageDatabase = this.initDrugDosageDatabase();
-        this.syncEnabled = false;
-        this.lastSyncTime = null;
-        this.syncInProgress = false;
+        this.lastImportBackup = null;
         this.init();
     }
 
@@ -59,22 +57,7 @@ class DrugManager {
     init() {
         this.bindEvents();
         this.renderDrugList();
-        this.initSync();
-    }
-    
-    initSync() {
-        // 恢复同步设置
-        this.syncEnabled = localStorage.getItem('syncEnabled') === 'true';
-        const syncBtn = document.getElementById('syncToggle');
-        if (syncBtn) {
-            syncBtn.textContent = this.syncEnabled ? '关闭同步' : '开启同步';
-            syncBtn.classList.toggle('active', this.syncEnabled);
-        }
-        
-        // 如果启用了同步，自动从云端获取数据
-        if (this.syncEnabled) {
-            this.syncFromCloud();
-        }
+        this.updateUndoButtonState(false);
     }
 
     loadDrugs() {
@@ -84,9 +67,6 @@ class DrugManager {
 
     saveDrugs() {
         localStorage.setItem('drugs', JSON.stringify(this.drugs));
-        if (this.syncEnabled) {
-            this.syncToCloud();
-        }
     }
 
     bindEvents() {
@@ -171,6 +151,10 @@ class DrugManager {
             this.exportDrugs();
         });
 
+        document.getElementById('undoImportBtn').addEventListener('click', () => {
+            this.undoImport();
+        });
+
         document.querySelector('#importModal .close').addEventListener('click', () => {
             this.closeImportModal();
         });
@@ -183,19 +167,6 @@ class DrugManager {
             this.importDrugs();
         });
 
-        // 同步功能事件
-        document.getElementById('syncToggle').addEventListener('click', () => {
-            this.toggleSync();
-        });
-
-        document.getElementById('syncNow').addEventListener('click', () => {
-            if (this.syncEnabled) {
-                this.syncFromCloud();
-            } else {
-                alert('请先开启同步功能');
-            }
-        });
-
         // 点击模态框外部关闭
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
@@ -203,6 +174,7 @@ class DrugManager {
                     this.closeModal();
                 } else if (e.target.id === 'importModal') {
                     this.closeImportModal();
+        this.updateUndoButtonState();
                 }
             }
         });
@@ -217,6 +189,7 @@ class DrugManager {
             modalTitle.textContent = '编辑药物';
             document.getElementById('drugName').value = drug.name;
             document.getElementById('dosage').value = drug.dosage;
+            document.getElementById('usageAmount').value = drug.usageAmount || '';
             
             // 更新剂量选项
             this.updateDosageOptions(drug.name);
@@ -255,8 +228,8 @@ class DrugManager {
             }
             
             document.getElementById('effect').value = drug.effect || '';
-            document.getElementById('contraindications').value = drug.contraindications;
-            document.getElementById('notes').value = drug.notes;
+            document.getElementById('contraindications').value = drug.contraindications || '';
+            document.getElementById('notes').value = drug.notes || '';
             this.editingId = drug.id;
         } else {
             modalTitle.textContent = '添加药物';
@@ -279,6 +252,7 @@ class DrugManager {
     saveDrug() {
         const name = document.getElementById('drugName').value.trim();
         const dosage = document.getElementById('dosage').value.trim();
+        const usageAmount = document.getElementById('usageAmount').value.trim();
         
         // 处理频率
         let frequency = '';
@@ -293,6 +267,9 @@ class DrugManager {
             frequency = frequencyOther;
         } else if (frequencySelect) {
             frequency = frequencySelect;
+        } else {
+            alert('请选择使用频次');
+            return;
         }
         
         // 处理用法
@@ -308,20 +285,29 @@ class DrugManager {
             administration = administrationOther;
         } else if (administrationSelect) {
             administration = administrationSelect;
+        } else {
+            alert('请选择药物用法');
+            return;
         }
         
         const effect = document.getElementById('effect').value.trim();
         const contraindications = document.getElementById('contraindications').value.trim();
         const notes = document.getElementById('notes').value.trim();
 
-        if (!name || !dosage) {
-            alert('请填写药物名称和剂量');
+        if (!name || !dosage || !usageAmount) {
+            alert('请填写药物名称、剂量和用量');
+            return;
+        }
+        
+        if (!effect) {
+            alert('请填写药物作用');
             return;
         }
 
         const drugData = {
             name,
             dosage,
+            usageAmount,
             frequency,
             frequencyOther,
             administration,
@@ -368,6 +354,7 @@ class DrugManager {
             return drug.name.toLowerCase().includes(searchTerm) ||
                    (drug.effect && drug.effect.toLowerCase().includes(searchTerm)) ||
                    drug.dosage.toLowerCase().includes(searchTerm) ||
+                   (drug.usageAmount && drug.usageAmount.toLowerCase().includes(searchTerm)) ||
                    (drug.frequency && drug.frequency.toLowerCase().includes(searchTerm)) ||
                    (drug.administration && drug.administration.toLowerCase().includes(searchTerm)) ||
                    (drug.contraindications && drug.contraindications.toLowerCase().includes(searchTerm)) ||
@@ -446,20 +433,25 @@ class DrugManager {
                 <div class="drug-name">${this.escapeHtml(drug.name)}</div>
                 
                 <div class="drug-info">
-                    <strong>剂量</strong>
-                    <div>${this.escapeHtml(drug.dosage)}/片</div>
+                    <strong>药物剂量</strong>
+                    <div>${this.escapeHtml(drug.dosage)}</div>
+                </div>
+
+                <div class="drug-info">
+                    <strong>药物用量</strong>
+                    <div>${this.escapeHtml(drug.usageAmount || '')}</div>
                 </div>
                 
                 ${drug.frequency ? `
                     <div class="drug-info">
-                        <strong>频率</strong>
+                        <strong>使用频次</strong>
                         <div>${this.escapeHtml(this.getFrequencyDisplayText(drug.frequency))}</div>
                     </div>
                 ` : ''}
                 
                 ${drug.administration ? `
                     <div class="drug-info">
-                        <strong>用法</strong>
+                        <strong>药物用法</strong>
                         <div>${this.escapeHtml(this.getAdministrationDisplayText(drug.administration))}</div>
                     </div>
                 ` : ''}
@@ -473,7 +465,7 @@ class DrugManager {
                 
                 ${drug.contraindications ? `
                     <div class="drug-info">
-                        <strong>禁忌症</strong>
+                        <strong>使用禁忌</strong>
                         <div>${this.escapeHtml(drug.contraindications)}</div>
                     </div>
                 ` : ''}
@@ -526,7 +518,12 @@ class DrugManager {
 
                 // 验证数据格式
                 const validDrugs = importedDrugs.filter(drug => 
-                    drug.name && drug.dosage
+                    drug.name &&
+                    drug.dosage &&
+                    drug.usageAmount &&
+                    drug.frequency &&
+                    drug.administration &&
+                    drug.effect
                 );
 
                 if (validDrugs.length === 0) {
@@ -540,10 +537,12 @@ class DrugManager {
                     drug.updatedAt = new Date().toISOString();
                 });
 
+                this.lastImportBackup = [...this.drugs];
                 this.drugs = [...validDrugs, ...this.drugs];
                 this.saveDrugs();
                 this.renderDrugList();
                 this.closeImportModal();
+                this.updateUndoButtonState(true);
                 alert(`成功导入 ${validDrugs.length} 个药物记录`);
                 
             } catch (error) {
@@ -572,6 +571,24 @@ class DrugManager {
         document.body.removeChild(link);
         
         URL.revokeObjectURL(link.href);
+    }
+
+    undoImport() {
+        if (!this.lastImportBackup) {
+            return;
+        }
+        this.drugs = [...this.lastImportBackup];
+        this.saveDrugs();
+        this.renderDrugList();
+        this.lastImportBackup = null;
+        this.updateUndoButtonState(false);
+        alert('已撤销最近一次导入的数据。');
+    }
+
+    updateUndoButtonState(enabled = false) {
+        const undoBtn = document.getElementById('undoImportBtn');
+        if (!undoBtn) return;
+        undoBtn.disabled = !enabled;
     }
 
     escapeHtml(text) {
@@ -621,132 +638,6 @@ class DrugManager {
         } else {
             dosageSelect.style.display = 'none';
         }
-    }
-}
-
-// 云端同步相关方法
-    async syncToCloud() {
-        if (this.syncInProgress) return;
-        
-        this.syncInProgress = true;
-        this.updateSyncStatus('正在同步...');
-        
-        try {
-            const syncData = {
-                drugs: this.drugs,
-                lastModified: new Date().toISOString(),
-                deviceId: this.getDeviceId()
-            };
-            
-            // 使用简单的JSONBin存储服务
-            const response = await fetch('https://api.jsonbin.io/v3/b', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Master-Key': '$2a$10$fFnMjOIOBJvTCEUhu8L6Pu9d1MU4TJZ9QN2OpMjcFx9GdIxiv7EHO', // 用户提供的API密钥
-                    'X-Bin-Name': 'drug-records-sync'
-                },
-                body: JSON.stringify(syncData)
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                localStorage.setItem('syncBinId', result.metadata.id);
-                this.lastSyncTime = new Date().toISOString();
-                localStorage.setItem('lastSyncTime', this.lastSyncTime);
-                this.updateSyncStatus('同步成功');
-            } else {
-                throw new Error('同步失败');
-            }
-        } catch (error) {
-            console.error('同步错误:', error);
-            this.updateSyncStatus('同步失败');
-        } finally {
-            this.syncInProgress = false;
-            setTimeout(() => this.updateSyncStatus(''), 3000);
-        }
-    }
-    
-    async syncFromCloud() {
-        if (this.syncInProgress) return;
-        
-        this.syncInProgress = true;
-        this.updateSyncStatus('正在获取数据...');
-        
-        try {
-            const binId = localStorage.getItem('syncBinId');
-            if (!binId) {
-                this.updateSyncStatus('无云端数据');
-                return;
-            }
-            
-            const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
-                method: 'GET',
-                headers: {
-                    'X-Master-Key': '$2a$10$fFnMjOIOBJvTCEUhu8L6Pu9d1MU4TJZ9QN2OpMjcFx9GdIxiv7EHO'
-                }
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                const cloudData = result.record;
-                
-                if (cloudData.drugs && Array.isArray(cloudData.drugs)) {
-                    // 检查是否需要合并数据
-                    const localLastModified = localStorage.getItem('lastSyncTime');
-                    if (!localLastModified || new Date(cloudData.lastModified) > new Date(localLastModified)) {
-                        this.drugs = cloudData.drugs;
-                        this.saveDrugs();
-                        this.renderDrugList();
-                        this.lastSyncTime = new Date().toISOString();
-                        localStorage.setItem('lastSyncTime', this.lastSyncTime);
-                        this.updateSyncStatus('同步完成');
-                    } else {
-                        this.updateSyncStatus('数据已是最新');
-                    }
-                }
-            } else {
-                throw new Error('获取云端数据失败');
-            }
-        } catch (error) {
-            console.error('同步错误:', error);
-            this.updateSyncStatus('同步失败');
-        } finally {
-            this.syncInProgress = false;
-            setTimeout(() => this.updateSyncStatus(''), 3000);
-        }
-    }
-    
-    getDeviceId() {
-        let deviceId = localStorage.getItem('deviceId');
-        if (!deviceId) {
-            deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('deviceId', deviceId);
-        }
-        return deviceId;
-    }
-    
-    updateSyncStatus(status) {
-        const statusElement = document.getElementById('syncStatus');
-        if (statusElement) {
-            statusElement.textContent = status;
-            statusElement.style.display = status ? 'block' : 'none';
-        }
-    }
-    
-    toggleSync() {
-        this.syncEnabled = !this.syncEnabled;
-        const syncBtn = document.getElementById('syncToggle');
-        if (syncBtn) {
-            syncBtn.textContent = this.syncEnabled ? '关闭同步' : '开启同步';
-            syncBtn.classList.toggle('active', this.syncEnabled);
-        }
-        
-        if (this.syncEnabled) {
-            this.syncFromCloud();
-        }
-        
-        localStorage.setItem('syncEnabled', this.syncEnabled);
     }
 }
 
