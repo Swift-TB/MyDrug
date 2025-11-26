@@ -3,6 +3,9 @@ class DrugManager {
         this.drugs = this.loadDrugs();
         this.editingId = null;
         this.drugDosageDatabase = this.initDrugDosageDatabase();
+        this.syncEnabled = false;
+        this.lastSyncTime = null;
+        this.syncInProgress = false;
         this.init();
     }
 
@@ -56,6 +59,22 @@ class DrugManager {
     init() {
         this.bindEvents();
         this.renderDrugList();
+        this.initSync();
+    }
+    
+    initSync() {
+        // 恢复同步设置
+        this.syncEnabled = localStorage.getItem('syncEnabled') === 'true';
+        const syncBtn = document.getElementById('syncToggle');
+        if (syncBtn) {
+            syncBtn.textContent = this.syncEnabled ? '关闭同步' : '开启同步';
+            syncBtn.classList.toggle('active', this.syncEnabled);
+        }
+        
+        // 如果启用了同步，自动从云端获取数据
+        if (this.syncEnabled) {
+            this.syncFromCloud();
+        }
     }
 
     loadDrugs() {
@@ -65,6 +84,9 @@ class DrugManager {
 
     saveDrugs() {
         localStorage.setItem('drugs', JSON.stringify(this.drugs));
+        if (this.syncEnabled) {
+            this.syncToCloud();
+        }
     }
 
     bindEvents() {
@@ -161,7 +183,18 @@ class DrugManager {
             this.importDrugs();
         });
 
-        
+        // 同步功能事件
+        document.getElementById('syncToggle').addEventListener('click', () => {
+            this.toggleSync();
+        });
+
+        document.getElementById('syncNow').addEventListener('click', () => {
+            if (this.syncEnabled) {
+                this.syncFromCloud();
+            } else {
+                alert('请先开启同步功能');
+            }
+        });
 
         // 点击模态框外部关闭
         window.addEventListener('click', (e) => {
@@ -588,6 +621,132 @@ class DrugManager {
         } else {
             dosageSelect.style.display = 'none';
         }
+    }
+}
+
+// 云端同步相关方法
+    async syncToCloud() {
+        if (this.syncInProgress) return;
+        
+        this.syncInProgress = true;
+        this.updateSyncStatus('正在同步...');
+        
+        try {
+            const syncData = {
+                drugs: this.drugs,
+                lastModified: new Date().toISOString(),
+                deviceId: this.getDeviceId()
+            };
+            
+            // 使用简单的JSONBin存储服务
+            const response = await fetch('https://api.jsonbin.io/v3/b', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': '$2a$10$fFnMjOIOBJvTCEUhu8L6Pu9d1MU4TJZ9QN2OpMjcFx9GdIxiv7EHO', // 用户提供的API密钥
+                    'X-Bin-Name': 'drug-records-sync'
+                },
+                body: JSON.stringify(syncData)
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                localStorage.setItem('syncBinId', result.metadata.id);
+                this.lastSyncTime = new Date().toISOString();
+                localStorage.setItem('lastSyncTime', this.lastSyncTime);
+                this.updateSyncStatus('同步成功');
+            } else {
+                throw new Error('同步失败');
+            }
+        } catch (error) {
+            console.error('同步错误:', error);
+            this.updateSyncStatus('同步失败');
+        } finally {
+            this.syncInProgress = false;
+            setTimeout(() => this.updateSyncStatus(''), 3000);
+        }
+    }
+    
+    async syncFromCloud() {
+        if (this.syncInProgress) return;
+        
+        this.syncInProgress = true;
+        this.updateSyncStatus('正在获取数据...');
+        
+        try {
+            const binId = localStorage.getItem('syncBinId');
+            if (!binId) {
+                this.updateSyncStatus('无云端数据');
+                return;
+            }
+            
+            const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+                method: 'GET',
+                headers: {
+                    'X-Master-Key': '$2a$10$fFnMjOIOBJvTCEUhu8L6Pu9d1MU4TJZ9QN2OpMjcFx9GdIxiv7EHO'
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                const cloudData = result.record;
+                
+                if (cloudData.drugs && Array.isArray(cloudData.drugs)) {
+                    // 检查是否需要合并数据
+                    const localLastModified = localStorage.getItem('lastSyncTime');
+                    if (!localLastModified || new Date(cloudData.lastModified) > new Date(localLastModified)) {
+                        this.drugs = cloudData.drugs;
+                        this.saveDrugs();
+                        this.renderDrugList();
+                        this.lastSyncTime = new Date().toISOString();
+                        localStorage.setItem('lastSyncTime', this.lastSyncTime);
+                        this.updateSyncStatus('同步完成');
+                    } else {
+                        this.updateSyncStatus('数据已是最新');
+                    }
+                }
+            } else {
+                throw new Error('获取云端数据失败');
+            }
+        } catch (error) {
+            console.error('同步错误:', error);
+            this.updateSyncStatus('同步失败');
+        } finally {
+            this.syncInProgress = false;
+            setTimeout(() => this.updateSyncStatus(''), 3000);
+        }
+    }
+    
+    getDeviceId() {
+        let deviceId = localStorage.getItem('deviceId');
+        if (!deviceId) {
+            deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('deviceId', deviceId);
+        }
+        return deviceId;
+    }
+    
+    updateSyncStatus(status) {
+        const statusElement = document.getElementById('syncStatus');
+        if (statusElement) {
+            statusElement.textContent = status;
+            statusElement.style.display = status ? 'block' : 'none';
+        }
+    }
+    
+    toggleSync() {
+        this.syncEnabled = !this.syncEnabled;
+        const syncBtn = document.getElementById('syncToggle');
+        if (syncBtn) {
+            syncBtn.textContent = this.syncEnabled ? '关闭同步' : '开启同步';
+            syncBtn.classList.toggle('active', this.syncEnabled);
+        }
+        
+        if (this.syncEnabled) {
+            this.syncFromCloud();
+        }
+        
+        localStorage.setItem('syncEnabled', this.syncEnabled);
     }
 }
 

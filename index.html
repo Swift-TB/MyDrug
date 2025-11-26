@@ -10,10 +10,13 @@
     <div class="container">
         <header>
             <h1>药物记录管理</h1>
+            <div class="sync-status" id="syncStatus" style="display: none;"></div>
             <div class="header-actions">
                 <button id="addDrugBtn" class="btn btn-primary">添加药物</button>
                 <button id="importBtn" class="btn btn-secondary">导入</button>
                 <button id="exportBtn" class="btn btn-secondary">导出</button>
+                <button id="syncToggle" class="btn btn-sync">开启同步</button>
+                <button id="syncNow" class="btn btn-sync-now">立即同步</button>
             </div>
         </header>
 
